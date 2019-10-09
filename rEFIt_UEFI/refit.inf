@@ -164,6 +164,7 @@
 
 [Packages]
 	CloverPkg.dec
+    CryptoPkg/CryptoPkg.dec
     MdePkg/MdePkg.dec
     MdeModulePkg/MdeModulePkg.dec
 	NetworkPkg/NetworkPkg.dec
@@ -188,8 +189,9 @@
   PeCoffLib
 #  GenericBdsLib
   MemLogLib
+  OcAppleImageVerificationLib
   VideoBiosPatchLib
-  OpensslLib
+  BaseCryptLib
   NetLib
   WaveLib
 

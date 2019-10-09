@@ -41,6 +41,7 @@ CONST INTN SecureBootDef = 0;
 
 #include <Protocol/Security.h>
 #include <Protocol/Security2.h>
+#include <Library/OcAppleImageVerificationLib.h>
 
 #ifndef DEBUG_ALL
 #define DEBUG_SECURE_BOOT 1
@@ -383,11 +384,16 @@ Internal2FileAuthentication(IN CONST EFI_SECURITY2_ARCH_PROTOCOL *This,
                             IN BOOLEAN                            BootPolicy)
 {
   EFI_STATUS Status = EFI_SECURITY_VIOLATION;
+  UINTN ImageSize = FileSize;
   // Check secure boot policy
   if (!PrecheckSecureBootPolicy(&Status, DevicePath)) {
     // Return original security policy
     Status = gSecurity2FileAuthentication(This, DevicePath, FileBuffer, FileSize, BootPolicy);
     if (EFI_ERROR(Status)) {
+      Status = VerifyApplePeImageSignature (FileBuffer, &ImageSize, NULL);
+    }
+    if (EFI_ERROR(Status)) {
+      DBG("VerifyApplePeImageSignature: %r\n", Status);
       CheckSecureBootPolicy(&Status, DevicePath, FileBuffer, FileSize);
     }
   }

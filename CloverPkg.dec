@@ -20,12 +20,9 @@
   PACKAGE_NAME                   = CloverPkg
   PACKAGE_GUID                   = C10BE46B-35C3-4B0B-9B9C-3F02051D782F
   PACKAGE_VERSION                = 0.4
-  DEFINE OPENSSL_VERSION         = 1.0.1e
 
 [Includes]
   Include
-  Library/OpensslLib/Include
-  Library/OpensslLib/openssl-$(OPENSSL_VERSION)/include
 
 [LibraryClasses]
   ##  @libraryclass  Provides MsgLog service
@@ -44,9 +41,16 @@
   ##  @libraryclass
   MachoLib|Include/Library/MachoLib.h
 
+  ##  @libraryclass
+  OcAppleImageVerificationLib|Include/Library/OcAppleImageVerificationLib.h
+
+  ##  @libraryclass
+  OcAppleKeysLib|Include/Library/OcAppleKeysLib.h
 
 
 [Guids]
+  # Include/Guid/AppleEfiSignature.h
+  gAppleEfiCertificateGuid      = {0x45E7BC51, 0x913C, 0x42AC, {0x96, 0xA2, 0x10, 0x71, 0x2F, 0xFB, 0xEB, 0xA7 }}
   gEfiPciExpressBaseAddressGuid = {0x3677d529, 0x326f, 0x4603, {0xa9, 0x26, 0xea, 0xac, 0xe0, 0x1d, 0xcb, 0xb0 }}
   gEfiAcpiDescriptionGuid       = {0x3c699197, 0x093c, 0x4c69, {0xb0, 0x6b, 0x12, 0x8a, 0xe3, 0x48, 0x1d, 0xc9 }}
   gEfiFlashMapHobGuid           = {0xb091e7d2, 0x05a0, 0x4198, {0x94, 0xf0, 0x74, 0xb7, 0xb8, 0xc5, 0x54, 0x59 }}

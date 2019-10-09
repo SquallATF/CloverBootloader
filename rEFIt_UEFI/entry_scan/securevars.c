@@ -39,13 +39,11 @@ CONST INTN SecureVarsDef = 0;
 
 #include "entry_scan.h"
 
+#include <Library/BaseCryptLib.h>
+
 #include <Guid/ImageAuthentication.h>
 
 #include "securebootkeys.h"
-
-#include <openssl/err.h>
-#include <openssl/pem.h>
-#include <openssl/sha.h>
 
 #ifndef DEBUG_ALL
 #define DEBUG_SECURE_VARS 1
@@ -380,11 +378,12 @@ EFI_STATUS SetSignedVariable(IN CHAR16   *DatabaseName,
   UINTN                          DataSize = 0;
   EFI_TIME                       Timestamp;
   VOID                          *Data = NULL;
-  BIO                           *BioData = NULL;
-  PKCS7                         *p7;
-  X509                          *Certificate = NULL;
-  EVP_PKEY                      *PrivateKey = NULL;
-  const EVP_MD                  *md;
+  UINT8                         *Certificate = NULL;
+  BOOLEAN                        Success = FALSE;
+  UINTN                          SrcDataSize = 0;
+  UINT8                         *SrcData = NULL;
+  UINT8                         *Tmp = NULL;
+  CONST UINT8                   *Pass = { 0 };
   // Check parameters
   if ((DatabaseName == NULL) || (DatabaseGuid == NULL)) {
     return EFI_INVALID_PARAMETER;
@@ -403,61 +402,46 @@ EFI_STATUS SetSignedVariable(IN CHAR16   *DatabaseName,
   DBG("Timestamp: %t\n", Timestamp);
   // In user mode we need to sign the database with exchange key
   if (!gSettings.SecureBootSetupMode) {
-    // Initialize the cyphers and digests
-    ERR_load_crypto_strings();
-    OpenSSL_add_all_digests();
-    OpenSSL_add_all_ciphers();
     // Create signing certificate
-    BioData = BIO_new_mem_buf((void *)gSecureBootExchangeKey, sizeof(gSecureBootExchangeKey));
-    if (BioData == NULL) {
-      return EFI_OUT_OF_RESOURCES;
-    }
-    Certificate = PEM_read_bio_X509(BioData, NULL, NULL, NULL);
-    BIO_free(BioData);
-    if (Certificate == NULL) {
-      return EFI_OUT_OF_RESOURCES;
-    }
-    // Create signing private key
-    BioData = BIO_new_mem_buf((void *)gSecureBootExchangePrivateKey, sizeof(gSecureBootExchangePrivateKey));
-    if (BioData == NULL) {
-      return EFI_OUT_OF_RESOURCES;
-    }
-    PrivateKey = PEM_read_bio_PrivateKey(BioData, NULL, NULL, NULL);
-    BIO_free(BioData);
-    if (PrivateKey == NULL) {
-      X509_free(Certificate);
+    Success = X509ConstructCertificate (
+                gSecureBootExchangeKeyDER,
+                sizeof(gSecureBootExchangeKeyDER),
+                &Certificate
+                );
+    if (!Success) {
       return EFI_OUT_OF_RESOURCES;
     }
     // Do the actual signing process
-    BioData = BIO_new(BIO_s_mem());
-    BIO_write(BioData, DatabaseName, (int)StrLen(DatabaseName));
-    BIO_write(BioData, DatabaseGuid, sizeof(EFI_GUID));
-    BIO_write(BioData, &Attributes, sizeof(UINT32));
-    BIO_write(BioData, &Timestamp, sizeof(EFI_TIME));
-    BIO_write(BioData, Database, (int)DatabaseSize);
+    SrcDataSize = StrLen(DatabaseName) + sizeof(EFI_GUID) +
+	       sizeof(UINT32) + sizeof(EFI_TIME) + 
+	       DatabaseSize;
+    SrcData = AllocateZeroPool(SrcDataSize);
+    Tmp = SrcData;
+    CopyMem(Tmp, DatabaseName, (int)StrLen(DatabaseName));
+    Tmp += StrLen(DatabaseName);
+    CopyMem(Tmp, DatabaseGuid, sizeof(EFI_GUID));
+    Tmp += sizeof(EFI_GUID);
+    CopyMem(Tmp, &Attributes, sizeof(UINT32));
+    Tmp += sizeof(UINT32);
+    CopyMem(Tmp, &Timestamp, sizeof(EFI_TIME));
+    Tmp += sizeof(EFI_TIME);
+    CopyMem(Tmp, Database, (int)DatabaseSize);
 
-    md = EVP_get_digestbyname("SHA256");
+    Success = Pkcs7Sign (
+                gSecureBootExchangePrivateKey,
+                sizeof(gSecureBootExchangePrivateKey),
+                Pass,
+                (UINT8 *)&SrcData,
+                SrcDataSize,
+                Certificate,
+                NULL,
+                (UINT8 **)&Data,
+                &DataSize
+                );
 
-    p7 = PKCS7_new();
-    PKCS7_set_type(p7, NID_pkcs7_signed);
-
-    PKCS7_content_new(p7, NID_pkcs7_data);
-
-    PKCS7_sign_add_signer(p7, Certificate, PrivateKey, md, PKCS7_BINARY | PKCS7_DETACHED | PKCS7_NOSMIMECAP);
-
-    PKCS7_set_detached(p7, 1);
-
-    PKCS7_final(p7, BioData, PKCS7_BINARY | PKCS7_DETACHED | PKCS7_NOSMIMECAP);
-    
-    X509_free(Certificate);
-    EVP_PKEY_free(PrivateKey);
-
-    DataSize = i2d_PKCS7(p7, NULL);
-    Data = AllocateZeroPool(DataSize);
-
-    i2d_PKCS7(p7, (unsigned char **)&Data);
-
-    PKCS7_free(p7);
+    if (!Success) {
+      return EFI_OUT_OF_RESOURCES;
+    }
 
     // Set the authentication buffer size
     Size = sizeof(EFI_TIME) + sizeof(EFI_GUID) + sizeof(UINT32) + sizeof(UINT16) + sizeof(UINT16) + DataSize;

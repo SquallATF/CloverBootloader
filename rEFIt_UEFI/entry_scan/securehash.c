@@ -39,9 +39,9 @@ CONST INTN SecureHashDef = 0;
 
 #include "entry_scan.h"
 
-#include <openssl/sha.h>
-
 #include <Guid/ImageAuthentication.h>
+
+#include <Library/BaseCryptLib.h>
 
 #ifndef DEBUG_ALL
 #define DEBUG_SECURE_HASH 1
@@ -560,7 +560,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
   UINT8                               *ImageBase = (UINT8 *)FileBuffer;
   UINT8                               *HashBase = ImageBase;
   UINT8                               *HashPtr;
-  SHA256_CTX                           HashCtx;
+  VOID                                *HashContext;
   EFI_SIGNATURE_LIST                  *SignatureListPtr;
   EFI_IMAGE_SECTION_HEADER            *Sections = NULL;
   EFI_IMAGE_SECTION_HEADER            *SectionPtr;
@@ -611,12 +611,20 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
     return NULL;
   }
   HashSize = (UINTN)(HashPtr - HashBase);
+  HashContext = NULL;
+  //
+  // Allocate hash context buffer required for SHA 256
+  //
+  HashContext = AllocatePool (Sha256GetContextSize ());
+  if (HashContext == NULL) {
+    goto Failed;
+  }
   // Initialize the hash context
-  if (SHA256_Init(&HashCtx) == 0) {
+  if (!Sha256Init(HashContext)) {
     goto Failed;
   }
   // Begin hashing the pe image
-  if (SHA256_Update(&HashCtx, HashBase, HashSize) == 0) {
+  if (!Sha256Update(HashContext, HashBase, HashSize)) {
     goto Failed;
   }
   // Skip the checksum
@@ -629,7 +637,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
       HashPtr = (UINT8 *)(&(PeHeader.Pe32->OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_SECURITY]));
       HashSize = (HashPtr - HashBase);
       if (HashSize != 0) {
-        if (SHA256_Update(&HashCtx, HashBase, HashSize) == 0) {
+        if (!Sha256Update(HashContext, HashBase, HashSize)) {
           goto Failed;
         }
       }
@@ -645,7 +653,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
       HashPtr = (UINT8 *)(&(PeHeader.Pe32Plus->OptionalHeader.DataDirectory[EFI_IMAGE_DIRECTORY_ENTRY_SECURITY]));
       HashSize = (HashPtr - HashBase);
       if (HashSize != 0) {
-        if (SHA256_Update(&HashCtx, HashBase, HashSize) == 0) {
+        if (!Sha256Update(HashContext, HashBase, HashSize)) {
           goto Failed;
         }
       }
@@ -658,7 +666,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
   // Hash the rest of the data directories if any
   HashSize = BytesHashed - (UINTN)(HashBase - ImageBase);
   if (HashSize != 0) {
-    if (SHA256_Update(&HashCtx, HashBase, HashSize) == 0) {
+    if (!Sha256Update(HashContext, HashBase, HashSize)) {
       goto Failed;
     }
   }
@@ -691,7 +699,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
     HashBase  = ImageBase + SectionPtr->PointerToRawData;
     HashSize  = (UINTN)SectionPtr->SizeOfRawData;
     // Hash the image section
-    if (SHA256_Update(&HashCtx, HashBase, HashSize) == 0) {
+    if (!Sha256Update(HashContext, HashBase, HashSize)) {
       goto Failed;
     }
     BytesHashed += HashSize;
@@ -704,7 +712,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
     }
     HashSize = (UINTN)(FileSize - (BytesHashed + CertSize));
     if (HashSize != 0) {
-      if (SHA256_Update(&HashCtx, HashBase, HashSize) == 0) {
+      if (!Sha256Update(HashContext, HashBase, HashSize)) {
         goto Failed;
       }
     }
@@ -722,7 +730,7 @@ STATIC VOID *CreateImageSignatureDatabase(IN VOID   *FileBuffer,
   SignatureListPtr->SignatureSize = (UINT32)(Size - sizeof(EFI_SIGNATURE_LIST));
   // Finalize the hash by placing it in the signature list
   HashPtr = ((UINT8 *)(Database)) + sizeof(EFI_SIGNATURE_LIST) + sizeof(EFI_GUID);
-  if (SHA256_Final(HashPtr, &HashCtx) == 0) {
+  if (!Sha256Final(HashContext, HashPtr)) {
     goto Failed;
   }
   // Cleanup and return success
@@ -737,6 +745,9 @@ Failed:
   }
   if (Sections != NULL) {
     FreePool(Sections);
+  }
+  if (HashContext != NULL) {
+    FreePool(HashContext);
   }
   return NULL;
 }

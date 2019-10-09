@@ -28,10 +28,6 @@
   FLASH_DEFINITION               = Clover.fdf
 !endif
 
-  !ifndef OPENSSL_VERSION
-    DEFINE OPENSSL_VERSION       = 1.0.1e
-  !endif
-
 ################################################################################
 #
 # Library Class section - list of all Library Classes needed by this Platform.
@@ -90,11 +86,14 @@
   SortLib|MdeModulePkg/Library/UefiSortLib/UefiSortLib.inf
   UefiCpuLib|CloverEFI/UefiCpuPkg/Library/BaseUefiCpuLib/BaseUefiCpuLib.inf
 !ifdef ENABLE_SECURE_BOOT
-  OpensslLib|Library/OpensslLib/openssl-$(OPENSSL_VERSION)/OpensslLib.inf
-  IntrinsicLib|Library/IntrinsicLib/IntrinsicLib.inf
+  BaseCryptLib|CryptoPkg/Library/BaseCryptLib/BaseCryptLib.inf
+  OpensslLib|CryptoPkg/Library/OpensslLib/OpensslLibCrypto.inf
+  IntrinsicLib|CryptoPkg/Library/IntrinsicLib/IntrinsicLib.inf
 !else
   OpensslLib|Library/OpensslLib/OpensslLibNull.inf
 !endif
+  OcAppleImageVerificationLib|Library/OcAppleImageVerificationLib/OcAppleImageVerificationLib.inf
+  OcAppleKeysLib|Library/OcAppleKeysLib/OcAppleKeysLib.inf
 
   #
   # Generic Modules
