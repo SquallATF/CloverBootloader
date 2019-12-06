@@ -11,7 +11,7 @@
  */
 
 /* top bar menu */
-"N/A" = "N/D"; // not available
+"N/A" = "N/D"; // not available (please be short)
 "Install Clover" = "Install Clover";
 "Current Clover revision" = "Current Clover revision";
 "Boot device" = "Boot Device";
@@ -22,6 +22,7 @@
 "Mount" = "Mount";
 "umount" = "umount";
 "mount point" = "mount point";
+"auto mount" = "auto mount";
 
 "true" = "true";
 "false" = "false";
@@ -57,6 +58,32 @@
 "Install" = "Install";
 "Uninstall" = "Uninstall";
 "AltBoot" = "Alternative boot";
+
+"UEFI only" = "Instala Clover para ser usado en placas base UEFI solamente.";
+
+"Install alternative booting PBR" = "Instalar arranque PBR alternativo con selección de boot al presionar una tecla.
+Archivo boot a arrancar = boot{tecla_a_presionar}";
+
+"Don't install any bootloader (boot0X, boot1X)" = "No instalar ningún gestor de arranque (boot0X, boot1X).
+Útil para placas base UEFI ya que no requieren los archivos del gestor de arranque.
+También puede ser usado si no quiere actualizar los sectores MBR o PBR en sistemas BIOS.";
+
+"Clover legacy BIOS boot sectors" = "Clover EFI requiere tres archivos esenciales. (en términos simples)
+boot0 (En el MBR del disco) responsable de cargar boot1.
+boot1 (En el sector de arranque de la partición) para localizar boot2.
+boot2 (En el directorio raíz de la partición) para cargar /EFI/CLOVER/CLOVERIA32.efi o CLOVERX64.efi, el kernel, etc.";
+
+"boot0af" = "Usado para arranque BIOS en placas base con BIOS.
+boot0af (boot0 Active First - Activa Primero) intenta arrancar la partición activa definida en el MBR. Si no hay una partición activa, intentará arrancar la primer partición EFI/FAT32/HFS (definida en el MBR y luego en el GPT) con una firma PBR válida.
+Esta opción activará la partición HFS/FAT32 seleccionada.";
+
+"boot0ss" = "Usado para arranque BIOS en placas base con BIOS.
+boot0ss (boot0 Signature Scanning - Escaneo de Firma) intenta arrancar la primer partición EFI/FAT32/HFS (definida en el MBR y luego en el GPT) con una firma PBR válida. Si no encuentra ninguna partición intentará arrancar la partición activa definida en el MBR.
+Este gestor de arranque es una buena elección cuando tiene Windows instalado en el mismo disco porque este quiere tener su partición activa.
+Esta opción no activará ninguna partición en el MBR.";
+
+"boot6" = "CloverEFI 64-bits para unidades de disco SATA";
+"boot7" = "CloverEFI 64-bits BiosBlockIO";
 
 /* Drivers */
 "UEFI mandatory" = "UEFI mandatory";
@@ -125,7 +152,7 @@ Clover may not started with it and you may have wake problem in system. Use with
 "DataHubDxe.efi" = "This is DataHub protocol support mandatory for macOS.
 Usually it is already present but sometime it may be missed. In this case you should see warning on screen.";
 
-"EmuVariableUefi.UEFI_description" = "Workaround for store NVRAM variables for systems without UEFI hardware.
+"EmuVariableUefi.efi" = "Workaround for store NVRAM variables for systems without UEFI hardware.
 Mostly UEFI boot uses hardware NVRAM but in some rare cases this driver is needed. Use it only if you have a problem without it";
 
 "EnglishDxe.efi" = "Support for UnicodeCollation protocol used by EFI Shell if it missed in UEFI.";

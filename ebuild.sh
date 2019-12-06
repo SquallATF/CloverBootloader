@@ -33,7 +33,7 @@ PLATFORMFILE=
 MODULEFILE=
 TARGETRULE=
 
-SCRIPT_VERS="2019-09-06"
+SCRIPT_VERS="2019-11-09"
 
 # Macro
 M_NOGRUB=0
@@ -54,10 +54,12 @@ if [[ "$SYSNAME" == Linux ]]; then
   export TOOLCHAIN=GCC53
   TOOLCHAIN_DIR=${TOOLCHAIN_DIR:-/usr}
 else
-  TOOLCHAIN_DIR=${TOOLCHAIN_DIR:-"$CLOVERROOT"/../../toolchain}
-fi
-if [[ ! -d $TOOLCHAIN_DIR ]]; then
-  TOOLCHAIN_DIR="${PWD}"/../opt/local
+  if [[ -d ~/src/opt/local ]]; then
+    TOOLCHAIN_DIR=~/src/opt/local
+  else
+    TOOLCHAIN_DIR=${TOOLCHAIN_DIR:-"$CLOVERROOT"/toolchain}
+  fi
+  export DIR_MAIN=${DIR_MAIN:-"$CLOVERROOT"/toolchain}
 fi
 export TOOLCHAIN_DIR
 echo "TOOLCHAIN_DIR: $TOOLCHAIN_DIR"
@@ -169,6 +171,10 @@ addEdk2BuildOption() {
 addEdk2BuildMacro() {
   local macro="$1"
   [[ "$macro" == "NO_GRUB_DRIVERS" ]] && M_NOGRUB=1
+  if [[ "$macro" == "USE_APPLE_HFSPLUS_DRIVER" && "$TARGETARCH" == "X64" ]]; then
+    [[ ! -e "${CLOVERROOT}"/FileSystems/HFSPlus/X64/HFSPlus.efi ]] && return
+    M_APPLEHFS=1
+  fi
   addEdk2BuildOption "-D" "$macro"
 }
 
@@ -784,9 +790,10 @@ MainPostBuildScript() {
       copyBin "$BUILD_DIR_ARCH"/$efi.efi "$CLOVER_PKG_DIR"/EFI/CLOVER/drivers/$DRIVERS_OFF/$DRIVERS_LEGACY/FileSystem/$efi.efi
     done
 
-    if [[ $M_APPLEHFS -eq 1 ]]; then
-      copyBin "${CLOVERROOT}"/FileSystems/HFSPlus/X64/HFSPlus.efi "$CLOVER_PKG_DIR"/EFI/CLOVER/drivers/$DRIVERS_OFF/$DRIVERS_LEGACY/FileSystem/HFSPlus.efi
-    fi
+#    HFSPlus is already built into Clover EFI
+#    if [[ $M_APPLEHFS -eq 1 ]]; then
+#      copyBin "${CLOVERROOT}"/FileSystems/HFSPlus/X64/HFSPlus.efi "$CLOVER_PKG_DIR"/EFI/CLOVER/drivers/$DRIVERS_OFF/$DRIVERS_LEGACY/FileSystem/HFSPlus.efi
+#    fi
 
 
     binArray=( FSInject DataHubDxe SMCHelper AudioDxe )
@@ -824,7 +831,7 @@ MainPostBuildScript() {
       copyBin "$BUILD_DIR_ARCH"/$efi.efi "$CLOVER_PKG_DIR"/EFI/CLOVER/drivers/$DRIVERS_OFF/$DRIVERS_UEFI/HID/$efi.efi
     done
 
-    binArray=( ApfsDriverLoader Fat VBoxExt2 VBoxExt4 VBoxIso9600 VBoxHfs )
+    binArray=( ApfsDriverLoader Fat VBoxExt2 VBoxExt4 VBoxIso9600 )
 
     for efi in "${binArray[@]}"
     do
@@ -833,8 +840,10 @@ MainPostBuildScript() {
 
     if [[ $M_APPLEHFS -eq 1 ]]; then
       copyBin "${CLOVERROOT}"/FileSystems/HFSPlus/X64/HFSPlus.efi "$CLOVER_PKG_DIR"/EFI/CLOVER/drivers/$DRIVERS_OFF/$DRIVERS_UEFI/FileSystem/HFSPlus.efi
+    else
+      copyBin "$BUILD_DIR_ARCH"/VBoxHfs.efi "$CLOVER_PKG_DIR"/EFI/CLOVER/drivers/$DRIVERS_OFF/$DRIVERS_UEFI/FileSystem/VBoxHfs.efi
     fi
-
+    
     # drivers64UEFI/FileVault2
     binArray=( AppleKeyFeeder HashServiceFix )
 

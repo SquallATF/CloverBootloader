@@ -30,27 +30,6 @@ void cleanUp() {
   [task setArguments:@[ @"-c", @"rm -f /tmp/Clover* && rm -f /tmp/boot0* && rm -f /tmp/boot1*" ]];
 
   [task launch];
-  /*
-  NSArray *files = [kfm contentsOfDirectoryAtPath:@"/tmp" error:nil];
-  if (files != nil) {
-    for (int i = 0; i < [files count]; i++) {
-      NSString *file = [files objectAtIndex:i];
-      NSString *fullPath = [@"/tmp" stringByAppendingPathComponent:file];
-      if ([file hasPrefix:@"Clover"]
-          || [file hasPrefix:@"boo0"]
-          || [file hasPrefix:@"boo1"]
-          || [file hasPrefix:@"boosec"]) {
-        if ([kfm fileExistsAtPath:fullPath]) {
-          printf("cleanUp %s\n", [fullPath UTF8String]);
-          NSError *err = nil;
-          [kfm removeItemAtPath:fullPath error:&err];
-          if (err != nil) {
-            printf("%s\n", [err.localizedFailureReason UTF8String]);
-          }
-        }
-      }
-    }
-  }*/
 }
 
 void exitWithMessage(const char *format, ...)
@@ -139,6 +118,7 @@ int main(int argc, char * const * argv) {
     NSString *boot1installPath      = [CloverappDict objectForKey:@"boot1install"];
     NSString *bootSectorsInstallSrc = [CloverappDict objectForKey:@"bootsectors-install"];
     NSString *bootSectorsInstall    = @"/tmp/bootsectors-install";
+    BOOL isESP                      = [[CloverappDict objectForKey:@"isESP"] boolValue];
     
     if ([kfm fileExistsAtPath:bootSectorsInstall]) {
       printf("Note: found old bootsectors-install..removing it..\n");
@@ -147,7 +127,10 @@ int main(int argc, char * const * argv) {
       }
     }
     
-    printf("bootSectorsInstallSrc = %s\n", [bootSectorsInstallSrc UTF8String]);
+    if (bootSectorsInstallSrc != nil) {
+      printf("bootSectorsInstallSrc = %s\n", [bootSectorsInstallSrc UTF8String]);
+    }
+    
     BOOL alt = NO;
     if ([CloverappDict objectForKey:@"alt"] != nil) {
       alt = [[CloverappDict objectForKey:@"alt"] boolValue];
@@ -449,10 +432,18 @@ int main(int argc, char * const * argv) {
        /tmp/bootsectors-install disk4s1 hfs FDisk_partition_scheme boot0af boot1h
        */
       NSTask *task = [[NSTask alloc] init];
+      NSPipe *pipe = [NSPipe new];
+      
+      task.standardOutput = pipe;
+      task.standardError = pipe;
+      
+      NSFileHandle * fh = [pipe fileHandleForReading];
       
       [task setEnvironment:[[NSProcessInfo new] environment]];
       [task setLaunchPath:bootSectorsInstall];
-      [task setArguments:@[ disk, filesystem, shemeMap, boot0, boot1 ]];
+      
+      NSString *esp = isESP ? @"ESP" : @"OTHER";
+      [task setArguments:@[ disk, filesystem, shemeMap, boot0, boot1, esp ]];
       
       task.terminationHandler = ^(NSTask *theTask) {
         if (theTask.terminationStatus != 0) {
@@ -460,6 +451,22 @@ int main(int argc, char * const * argv) {
         }
       };
       [task launch];
+      //[task waitUntilExit];
+      NSData *data = [fh readDataToEndOfFile];
+      if (data) {
+        NSString *output = [[NSString alloc] initWithData:data
+                                                 encoding:NSUTF8StringEncoding];
+        printf("%s\n", [output UTF8String]);
+      }
+      
+    } else {
+      if (isESP) {
+        NSTask *task = [[NSTask alloc] init];
+        [task setEnvironment:[[NSProcessInfo new] environment]];
+        [task setLaunchPath:@"/usr/sbin/diskutil"];
+        [task setArguments:@[ @"umount", @"force", disk ]];
+        [task launch];
+      }
     }
     cleanUp();
     exit(EXIT_SUCCESS);

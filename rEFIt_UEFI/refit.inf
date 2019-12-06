@@ -163,11 +163,11 @@
   libeg/ftol.asm | MSFT
 
 [Packages]
-	CloverPkg.dec
-    CryptoPkg/CryptoPkg.dec
-    MdePkg/MdePkg.dec
-    MdeModulePkg/MdeModulePkg.dec
-	NetworkPkg/NetworkPkg.dec
+  CloverPkg.dec
+  CryptoPkg/CryptoPkg.dec
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  NetworkPkg/NetworkPkg.dec
   IntelFrameworkPkg/IntelFrameworkPkg.dec
   IntelFrameworkModulePkg/IntelFrameworkModulePkg.dec
 
@@ -182,6 +182,7 @@
   DebugLib
   DxeServicesLib
   DxeServicesTableLib
+  HdaDevicesLib
   HobLib
   IoLib
 #  HiiLib

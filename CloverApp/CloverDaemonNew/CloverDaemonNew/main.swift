@@ -7,26 +7,19 @@
 //
 
 import Foundation
-import CoreFoundation
 
 let fm = FileManager.default
-//let runLoop = CFRunLoopGetCurrent()
+let daemonVersion = "1.0.8"
 
-/*
- Store a session reference to contact Disk Arbitration,
- ..it will be usefull during the shut down.
- this is weird, but make some chances for the last stand (SIGTERM)
- */
-let gSession  = DASessionCreate(kCFAllocatorDefault)
-let gSession1 = DASessionCreate(kCFAllocatorDefault)
-let gSession2 = DASessionCreate(kCFAllocatorDefault)
-let gSession3 = DASessionCreate(kCFAllocatorDefault)
-let gSession4 = DASessionCreate(kCFAllocatorDefault)
-let gSession5 = DASessionCreate(kCFAllocatorDefault)
+let wrapperPath = "/Library/Application Support/Clover/CloverWrapper.sh"
+let frameworksPath = "/Library/Application Support/Clover/Frameworks"
+let loginWindowPath = "/var/root/Library/Preferences/com.apple.loginwindow.plist"
+let cloverLogOut = "/Library/Application Support/Clover/CloverLogOut"
+let cloverDaemonNewPath = "/Library/Application Support/Clover/CloverDaemonNew"
+let launchPlistPath = "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist"
 
-var BootDeviceUUID : String? = nil
-var BootDeviceFS   : String? = nil
-var BootDevice     : String? = nil
+let oldLaunchPlistPath = "/Library/LaunchDaemons/com.projectosx.clover.daemon.plist"
+
 
 func execAttr() -> [FileAttributeKey : Any] {
   var attributes = [FileAttributeKey : Any]()
@@ -63,37 +56,7 @@ func run(cmd: String) {
 }
 
 func doJob() {
-  /*
-   Don't lose time.. We're shutting down, so try to make root writable anyway
-   */
-  if !fm.isWritableFile(atPath: "/") {
-    run(cmd: "mount -uw /")
-  }
-  
- 
   if let nvram = getNVRAM() {
-    // first time is to dump nvram (time is running out..)
-    if (nvram.object(forKey: "EmuVariableUefiPresent") != nil ||
-      nvram.object(forKey: "TestEmuVariableUefiPresent") != nil) {
-      // mount -t "$filesystem" "$bootdev" "$mnt_pt"
-      if let bootDevice = BootDevice, let fs = BootDeviceFS {
-        let uuid = (BootDeviceUUID != nil) ? "\(BootDeviceUUID!)" : "NO UUID"
-        let letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        let mp = "/Volumes/\(String((0..<10).map{ _ in letters.randomElement()! }))"
-        let type : String = (fs.hasPrefix("fat") || fs.hasPrefix("exf")) ? "msdos" : fs
-        
-        let cmd = "if [[ $(LC_ALL=C mount | egrep \"^/dev/\(bootDevice) on\" | sed 's/^.* on *//;s/ ([^(]*//') == \"/\"* ]]; then nvram -x -p > $(LC_ALL=C mount | egrep \"^/dev/\(bootDevice) on\" | sed 's/^.* on *//;s/ ([^(]*//')/nvram.plist; echo 'nvram saved to am disk with UUID \(uuid)'; else mkdir -p \(mp); mount -t \(type) /dev/\(bootDevice) \(mp); nvram -x -p > \(mp)/nvram.plist; echo 'nvram saved to u disk with UUID \(uuid)'; fi"
-        
-        let task = Process()
-        task.launchPath = "/bin/bash"
-        task.arguments = ["-c", cmd]
-        
-        task.launch()
-      } else {
-        saveNVRAM(volume: "/", nvram: nvram)
-      }
-    }
-    
     checkSleepProxyClient(nvram: nvram)
   } else {
     print("nvram not present in this machine.")
@@ -101,113 +64,105 @@ func doJob() {
   exit(EXIT_SUCCESS)
 }
 
-func mountSaveNVRAM(disk bsdName: String, at path: String?, nvram: NSDictionary) {
-  print("mount called for \(bsdName)")
-  var disk : String = bsdName
-  if disk.hasPrefix("disk") || disk.hasPrefix("/dev/disk") {
-    if disk.hasPrefix("/dev/disk") {
-      disk = disk.components(separatedBy: "dev/")[1]
-    }
-
-    let allocator = kCFAllocatorDefault 
-    let newsession = DASessionCreate(allocator)
-    if let session = ((newsession == nil) ? gSession5 : newsession) {
-      if let bsd = DADiskCreateFromBSDName(allocator, session, disk) {
-        var url : CFURL? = nil
-        if (path != nil) {
-          url = CFURLCreateFromFileSystemRepresentation(allocator, path?.toPointer(), (path?.count)!, true)
-        }
-        var context = UnsafeMutablePointer<Int>.allocate(capacity: 1)
-        context.initialize(repeating: 0, count: 1)
-        context.pointee = 0
-        
-        DASessionScheduleWithRunLoop(session, CFRunLoopGetCurrent(), CFRunLoopMode.defaultMode.rawValue)
-        
-        DADiskMountWithArguments(bsd, url, DADiskMountOptions(kDADiskMountOptionDefault), { (o, dis, ctx) in
-          if (dis != nil) && (ctx != nil) {
-            print("mount failure: " + printDAReturn(r: DADissenterGetStatus(dis!)))
-          }
-        }, &context, nil)
-        //CFRunLoopRun()
-        let result : Bool = (context.pointee == 0)
-        print("\(bsdName) mounted: \(result)")
-        if result {
-          let mountpoint = getMountPoint(from: disk)
-          if ((mountpoint != nil)) {
-            // already mounted
-            saveNVRAM(volume: mountpoint!, nvram: nvram)
-          }
-        } else {
-          saveNVRAM(volume: "/", nvram: nvram)
-        }
-        
-        DASessionUnscheduleFromRunLoop(session,
-                                       CFRunLoopGetCurrent(),
-                                       CFRunLoopMode.defaultMode.rawValue)
-        
-        context.deallocate()
-      } else {
-        print("DADiskCreateFromBSDName() is null.")
-        saveNVRAM(volume: "/", nvram: nvram)
-      }
-    } else {
-      print("gSession in null.")
-      saveNVRAM(volume: "/", nvram: nvram)
-    }
-    
-  }
-}
-
-
-func saveNVRAM(volume: String, nvram: NSDictionary) {
-  let withSlash = (volume == "/") ? volume : "\(volume)/"
-  if !fm.isWritableFile(atPath: withSlash) {
-    print("saveNVRAM(): '\(volume)' is read-only..\n")
-    run(cmd: "mount -uw /")
-  }
-  if (nvram.object(forKey: "EmuVariableUefiPresent") != nil ||
-    nvram.object(forKey: "TestEmuVariableUefiPresent") != nil) {
-    if nvram.write(toFile: volume.addPath("nvram.plist"), atomically: true) {
-      print("nvram saved correctly at '\(volume.addPath("nvram.plist"))'.")
-      run(cmd: "chmod 644 \(volume.addPath("nvram.plist"))")
-    } else {
-      print("nvram not saved.")
-    }
-  }
-}
-
 func checkSleepProxyClient(nvram: NSDictionary) {
   let mDNSResponderPath = "/System/Library/LaunchDaemons/com.apple.mDNSResponder.plist"
   let disableOption = "-DisableSleepProxyClient"
   
+  var value = "false"
+  
   if let nvdata = nvram.object(forKey: "Clover.DisableSleepProxyClient") as? Data {
-    let value = String(decoding: nvdata, as: UTF8.self)
-    if value == "true" {
-      if !fm.isWritableFile(atPath: "/") {
-        print("try to making '/' writable as Clover.DisableSleepProxyClient=true.")
-        run(cmd: "mount -uw /")
-      }
-      
-      // check if already disabled
-      if let mDNSResponder = NSDictionary(contentsOfFile: mDNSResponderPath) {
-        if let ProgramArguments = mDNSResponder.object(forKey: "ProgramArguments") as? NSArray {
-          var toDisable : Bool = true
-          for a in ProgramArguments {
-            if let arg = a as? String {
-              if arg == disableOption {
-                print("DisableSleepProxyClient: service already disabled\n")
-                toDisable = false
-                break
-              }
-            }
-          }
-          
-          if toDisable {
-            print("DisableSleepProxyClient: trying to disable the service.. SIP permitting.\n")
-            let cmd = "/usr/libexec/PlistBuddy -c \"Add ProgramArguments: string \(disableOption)\" \(mDNSResponderPath)"
-            run(cmd: cmd)
+    value = String(decoding: nvdata, as: UTF8.self)
+    print("Clover.DisableSleepProxyClient=\(value)")
+  } else {
+    print("Clover.DisableSleepProxyClient is not set.")
+  }
+  
+  if !fm.fileExists(atPath: mDNSResponderPath) {
+    print("Error: cannot found \(mDNSResponderPath)")
+    return
+  }
+  if !fm.isWritableFile(atPath: "/") {
+    print("Cannot go ahead as / is read-only")
+    return
+  }
+  
+  let toDisable : Bool = value == "true"
+  // check if enabled or disabled
+  if let mDNSResponder = NSDictionary(contentsOfFile: mDNSResponderPath) {
+    if let ProgramArguments = mDNSResponder.object(forKey: "ProgramArguments") as? NSArray {
+      var index : Int = -1
+      var serviceIsDisabled = false
+      for i in 0..<ProgramArguments.count {
+        if let arg = ProgramArguments.object(at: i) as? String {
+          if arg == disableOption {
+            index = i
+            serviceIsDisabled = true
+            break
           }
         }
+      }
+      
+      // no need to do anything if already as user wants.
+      if toDisable && serviceIsDisabled {
+        print("Sleep Proxy Client is already disabled.")
+        return
+      } else if !toDisable && !serviceIsDisabled {
+        print("Sleep Proxy Client is already enabled as default.")
+        return
+      }
+      
+      
+      if toDisable {
+        print("Trying to disable Sleep Proxy Client service.")
+        let cmd = "/usr/libexec/PlistBuddy -c \"Add ProgramArguments: string \(disableOption)\" \(mDNSResponderPath)"
+        run(cmd: cmd)
+      } else {
+        print("Trying to enable Sleep Proxy Client service as default.")
+        if index >= 0 {
+          let cmd = "/usr/libexec/PlistBuddy -c \"delete :ProgramArguments:\(index)\" \(mDNSResponderPath)"
+          run(cmd: cmd)
+        }
+      }
+    }
+  }
+}
+
+func getLogOutHook() -> String? {
+  return NSDictionary(contentsOfFile: loginWindowPath)?.object(forKey: "LogoutHook") as? String
+}
+
+func removeCloverRCScripts() {
+  if fm.fileExists(atPath: oldLaunchPlistPath) {
+    print("unloading old CloverDaemon..")
+    run(cmd: "launchctl unload \(oldLaunchPlistPath)")
+    try? fm.removeItem(atPath: oldLaunchPlistPath)
+    if fm.fileExists(atPath: "/Library/Application Support/Clover/CloverDaemon") {
+      try? fm.removeItem(atPath: "/Library/Application Support/Clover/CloverDaemon")
+    }
+    
+    if fm.fileExists(atPath: "/Library/Application Support/Clover/CloverDaemon-stopservice") {
+      try? fm.removeItem(atPath: "/Library/Application Support/Clover/CloverDaemon-stopservice")
+    }
+  }
+  
+  let oldRCScripts : [String] = ["/etc/rc.boot.d/10.save_and_rotate_boot_log.local",
+                                 "/etc/rc.boot.d/20.mount_ESP.local",
+                                 "/etc/rc.boot.d/70.disable_sleep_proxy_client.local.disabled",
+                                 "/etc/rc.boot.d/70.disable_sleep_proxy_client.local",
+                                 "/etc/rc.clover.lib",
+                                 "/etc/rc.shutdown.d/80.save_nvram_plist.local"];
+  
+  for rc in oldRCScripts {
+    if fm.fileExists(atPath: rc) {
+      if !fm.isWritableFile(atPath: "/") {
+        run(cmd: "mount -uw /")
+        sleep(2)
+      }
+      print("Removing \(rc).")
+      do {
+        try fm.removeItem(atPath: rc)
+      } catch {
+        print(error)
       }
     }
   }
@@ -215,11 +170,16 @@ func checkSleepProxyClient(nvram: NSDictionary) {
 
 func main() {
   let df = DateFormatter()
+  df.locale = Locale(identifier: "en_US")
   df.dateFormat = "yyyy-MM-dd hh:mm:ss"
   var now = df.string(from: Date())
-  print("--------------------------------------------")
+
+  print("\n\n--------------------------------------------")
+  print("- CloverDaemonNew v\(daemonVersion)")
+  print("- macOS \(ProcessInfo().operatingSystemVersionString)")
   print("- System start at \(now)")
-  print("--------------------------------------------")
+  print("------")
+  run(cmd: "kextunload /System/Library/Extensions/msdosfs.kext 2>/dev/null")
   if let volname = getMediaName(from: "/") {
     print("root mount point is '/Volumes/\(volname)'")
   }
@@ -231,17 +191,14 @@ func main() {
   }
   
   // check if old daemon exist
-  let myDir = (CommandLine.arguments[0] as NSString).deletingLastPathComponent
-  if fm.fileExists(atPath: "\(myDir)/CloverDaemon") {
-    print("unloading old CloverDaemon")
-    run(cmd: "launchctl unload /Library/LaunchDaemons/com.projectosx.clover.daemon.plist")
-  }
-  
+  removeCloverRCScripts()
+
   /*
-   Clean some lines fro clover.daemon.log.
+   Clean some lines from clover.daemon.log.
    This is not going to go into the System log and is not
    controllable by the nvram.
    */
+  
   let logLinesMax : Int = 500
   let logDir = "/Library/Logs/CloverEFI"
   let logPath = "/Library/Logs/CloverEFI/clover.daemon.log"
@@ -264,55 +221,208 @@ func main() {
     }
   }
   
-  
-  // get the boot device UUID, will be of help later
-  if let bootDevice = findBootPartitionDevice() {
-    BootDevice     = bootDevice
-    BootDeviceUUID = getVolumeUUID(from: bootDevice)
-    BootDeviceFS   = getFS(from: bootDevice)?.lowercased()
-  }
-  
+  // check options in nvram
+  var mountRWCalled = fm.isWritableFile(atPath: "/")
   
   if let nvram = getNVRAM() {
     if let nvdata = nvram.object(forKey: "Clover.RootRW") as? Data {
       let value = String(decoding: nvdata, as: UTF8.self)
-      if value == "true" && !fm.isWritableFile(atPath: "/") {
-        print("making '/' writable as Clover.RootRW=true")
-        run(cmd: "mount -uw /")
+      if value == "true" {
+        if !mountRWCalled {
+          mountRWCalled = true
+          print("making '/' writable as Clover.RootRW=true.")
+          run(cmd: "mount -uw /")
+        }
       }
     }
-    checkSleepProxyClient(nvram: nvram)
-  }
-  
-  // Clean old nvram.plist user may have
-  for v in getVolumes() {
-    let nvramtPath = v.addPath("nvram.plist")
-    if fm.fileExists(atPath: nvramtPath) {
-      if fm.isDeletableFile(atPath: nvramtPath) {
-        do {
-          try fm.removeItem(atPath: nvramtPath)
-          print("old '\(nvramtPath)' removed.")
-        } catch {
-          print("Error: can't remove '\(nvramtPath)'.")
+
+    // using the logout Hook only if EmuVariableUefiPresent
+    let loh = getLogOutHook()
+    
+    if (nvram.object(forKey: "EmuVariableUefiPresent") != nil ||
+      nvram.object(forKey: "TestEmuVariableUefiPresent") != nil) {
+      
+      // if a hook exist and is not our one, then add a wrapper
+      if (loh != nil) {
+        if loh! != cloverLogOut && fm.fileExists(atPath: loh!) {
+          let wrapper =
+          """
+#!/bin/sh
+
+'\(cloverLogOut)'
+          
+# This file is automatically generated by CloverDaemonNew because
+# it has detected you added a logout script somewhere else.
+# if you edit this file, be aware that if you start to boot in UEFI
+# CloverDaemonNew will take care to restore your custom logout script,
+# but your script must be the last line to be detected again.
+# The script path must be escaped within '' if contains spaces in the middle.
+# NOTE: if your will is to add multiple scripts, please add them to
+# the following script (and so not in this script):
+          
+'\(loh!)'
+"""
+          print("Detected user logout hook at \(loh!), merging with it with CloverLogOut in CloverWrapper.sh.")
+          do {
+            try wrapper.write(toFile: wrapperPath, atomically: false, encoding: .utf8)
+            try fm.setAttributes(execAttr(), ofItemAtPath: wrapperPath)
+            
+            run(cmd: "defaults write com.apple.loginwindow LogoutHook '\(wrapperPath)'")
+          } catch {
+            print(error)
+          }
+        } else {
+          run(cmd: "defaults write com.apple.loginwindow LogoutHook '\(cloverLogOut)'")
         }
       } else {
-        print("Error: '\(nvramtPath)' is not deletable.")
+        run(cmd: "defaults write com.apple.loginwindow LogoutHook '\(cloverLogOut)'")
+      }
+      
+      if !fm.isWritableFile(atPath: "/") {
+        if !mountRWCalled {
+          print("making '/' writable as EmuVariableUefiPresent is present to save nvram.")
+        }
+        run(cmd: "mount -uw /")
+      }
+    } else {
+      // what to do? remove the logout hook if it's our
+      if (loh != nil) {
+        if loh! == cloverLogOut {
+          // it is CloverLogOut
+          print("Removing CloverLogOut hook as EmuVariable is no longer present.")
+          run(cmd: "defaults delete com.apple.loginwindow LogoutHook")
+        } else if loh! == wrapperPath {
+          print("Removing CloverWrapper.sh logout hook as EmuVariable is no longer present.")
+          // it is CloverWrapper.sh. We have to mantain user script!
+          // get the user script path:
+          var script : String? = nil
+          if let lines = try? String(contentsOf: URL(fileURLWithPath: wrapperPath),
+            encoding: .utf8).components(separatedBy: .newlines) {
+            if lines.count > 0 {
+              script = lines.last
+            }
+          }
+          if script != nil {
+            print("..but taking user logout hook script at \(script!).")
+            run(cmd: "defaults write com.apple.loginwindow LogoutHook \(script!)")
+          } else {
+            run(cmd: "defaults delete com.apple.loginwindow LogoutHook")
+          }
+        }
       }
     }
+    
+    if let nvdata = nvram.object(forKey: "Clover.DisableSleepProxyClient") as? Data {
+      let value = String(decoding: nvdata, as: UTF8.self)
+      if value == "true" {
+        if !fm.isWritableFile(atPath: "/") {
+          if !mountRWCalled {
+            print("making '/' writable as Clover.DisableSleepProxyClient=true.")
+          }
+          run(cmd: "mount -uw /")
+          sleep(2)
+        }
+      }
+    }
+    
+    checkSleepProxyClient(nvram: nvram)
+    /*
+     Clean old nvram.plist user may have in all volumes
+     Note: never delete in / as this will be done at shut down/restart
+     if the nvram is correctly saved somewhere else (e.g. in the ESP).
+     
+     Also don't delete nvram.plist from external devices as this is not or
+     shouldn't be our business.
+     */
+    
+    for v in getVolumes() {
+      let nvramtPath = v.addPath("nvram.plist")
+      if v != "/" && isInternalDevice(diskOrMtp: v) {
+        if fm.fileExists(atPath: nvramtPath) {
+          if fm.isDeletableFile(atPath: nvramtPath) {
+            do {
+              try fm.removeItem(atPath: nvramtPath)
+              print("old '\(nvramtPath)' removed.")
+            } catch {
+              print("Error: can't remove '\(nvramtPath)'.")
+            }
+          } else {
+            print("Error: '\(nvramtPath)' is not deletable.")
+          }
+        }
+      }
+    }
+    
+    /*
+     Mount ESP if required
+     Clover.MountEFI=Yes|diskX|GUID [default No]
+     */
+    if let nvdata = nvram.object(forKey: "Clover.MountEFI") as? Data {
+      let value = String(decoding: nvdata, as: UTF8.self)
+      print("Clover.MountEFI=\(value)")
+      var disk : String? = nil
+      let allEsps = getAllESPs()
+      if value == "Yes" {
+        // mount the boot device
+        disk = findBootPartitionDevice()
+      } else if value.hasPrefix("disk") {
+        disk = value
+      } else if value.hasPrefix("/dev/") {
+        // mount desired ESP /dev/disk-rdisk
+        var tmpdisk = value
+        if tmpdisk.hasPrefix("/dev/disk") {
+          tmpdisk = value.replacingOccurrences(of: "/dev/", with: "")
+        } else if tmpdisk.hasPrefix("/dev/rdisk") {
+          tmpdisk = value.replacingOccurrences(of: "/dev/r", with: "")
+        }
+        if tmpdisk.hasPrefix("disk") {
+          disk = tmpdisk
+        }
+      } else if value.count == 36 && ((value .range(of: "-") != nil)) {
+        // mount desired ESP by Volume UUID
+        for d in allEsps {
+          if let uuid = getMediaUUID(from: d) {
+            if uuid == value {
+              disk = d
+              break
+            }
+          }
+        }
+      }
+      
+      if (disk != nil) {
+        if (getBSDName(of: disk!) != nil) {
+          if allEsps.contains(disk!) {
+            print("try to mount \(disk!) as requested.")
+            mount(disk: disk!, at: nil)
+          } else {
+            print("\(disk!) is not an EFI System Partition.")
+          }
+        } else {
+          print("\(disk!) is not a valid disk object or is unavailable at the moment.")
+        }
+      } else {
+        print("Nothing to mount.")
+      }
+    }
+    
+  } else {
+    print("Error: nvram not present in this System.")
   }
-  
-  // SIGTERM? This is a daemon so we are shutting down
-  signal(SIGTERM, SIG_IGN)
-  let termSource = DispatchSource.makeSignalSource(signal: SIGTERM)
-  termSource.setEventHandler {
+
+  print("Logout hook is: \(getLogOutHook() ?? "none")")
+  signal(SIGTERM, SIG_IGN) //preferred
+  let sigtermSource = DispatchSource.makeSignalSource(signal: SIGTERM)
+  sigtermSource.setEventHandler {
     now = df.string(from: Date())
     print("")
-    print("- System power off at \(now)")
+    print("SIGTERM received at \(now)")
     doJob()
   }
-  termSource.resume()
-  //CFRunLoopRun()
-  dispatchMain()
+  sigtermSource.resume()
+  
+  RunLoop.current.run()
+  //dispatchMain()
 }
 
 let myPath = CommandLine.arguments[0]
@@ -329,10 +439,11 @@ if CommandLine.arguments.contains("--install") {
   launch.setValue("/Library/Logs/CloverEFI/clover.daemon.log", forKey: "StandardErrorPath")
   launch.setValue("/Library/Logs/CloverEFI/clover.daemon.log", forKey: "StandardOutPath")
   
-  let ProgramArguments = NSArray(object: "/Library/Application Support/Clover/CloverDaemonNew")
+  let ProgramArguments = NSArray(object: cloverDaemonNewPath)
   
   launch.setValue(ProgramArguments, forKey: "ProgramArguments")
   
+  removeCloverRCScripts()
   do {
     if !fm.fileExists(atPath: "/Library/Application Support/Clover") {
       try fm.createDirectory(atPath: "/Library/Application Support/Clover",
@@ -340,28 +451,39 @@ if CommandLine.arguments.contains("--install") {
                              attributes: nil)
     }
     
-    if fm.fileExists(atPath: "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist") {
-      try fm.removeItem(atPath: "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist")
+    if fm.fileExists(atPath: launchPlistPath) {
+      try fm.removeItem(atPath: launchPlistPath)
     }
     
-    if fm.fileExists(atPath: "/Library/Application Support/Clover/\(myName)") {
-      try fm.removeItem(atPath: "/Library/Application Support/Clover/\(myName)")
+    if fm.fileExists(atPath: cloverDaemonNewPath) {
+      try fm.removeItem(atPath: cloverDaemonNewPath)
     }
     
-    launch.write(toFile: "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist",
-                 atomically: true)
+    launch.write(toFile: launchPlistPath, atomically: true)
     
-    try fm.copyItem(atPath: myPath, toPath: "/Library/Application Support/Clover/\(myName)")
+    try fm.copyItem(atPath: myPath, toPath: cloverDaemonNewPath)
     
     try fm.setAttributes(execAttr(),
-                         ofItemAtPath: "/Library/Application Support/Clover/\(myName)")
+                         ofItemAtPath: cloverDaemonNewPath)
     
     
-    try fm.setAttributes(launchAttr(),
-                         ofItemAtPath: "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist")
+    let logouthookSrc = myPath.deletingLastPath.addPath("CloverLogOut")
+    if fm.fileExists(atPath: cloverLogOut) {
+      try fm.removeItem(atPath: cloverLogOut)
+    }
+    if fm.fileExists(atPath: logouthookSrc) {
+      try fm.copyItem(atPath: logouthookSrc,
+                      toPath: cloverLogOut)
+      try fm.setAttributes(execAttr(),
+                           ofItemAtPath: cloverLogOut)
+    }
     
-    run(cmd: "launchctl load /Library/LaunchDaemons/com.slice.CloverDaemonNew.plist")
-    run(cmd: "launchctl start /Library/LaunchDaemons/com.slice.CloverDaemonNew.plist")
+    try fm.setAttributes(launchAttr(), ofItemAtPath: launchPlistPath)
+    if fm.fileExists(atPath: launchPlistPath) {
+      run(cmd: "launchctl unload \(launchPlistPath)")
+    }
+    run(cmd: "launchctl load \(launchPlistPath)")
+    run(cmd: "launchctl start \(launchPlistPath)")
     exit(EXIT_SUCCESS)
   } catch {
     print(error)
@@ -369,13 +491,25 @@ if CommandLine.arguments.contains("--install") {
 } else if CommandLine.arguments.contains("--uninstall") {
   print("uninstalling daemon...")
   do {
-    if fm.fileExists(atPath: "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist") {
-      run(cmd: "launchctl unload /Library/LaunchDaemons/com.slice.CloverDaemonNew.plist")
-      try fm.removeItem(atPath: "/Library/LaunchDaemons/com.slice.CloverDaemonNew.plist")
+    if fm.fileExists(atPath: launchPlistPath) {
+      run(cmd: "launchctl unload \(launchPlistPath)")
+      try fm.removeItem(atPath: launchPlistPath)
     }
     
-    if fm.fileExists(atPath: "/Library/Application Support/Clover/CloverDaemonNew") {
-      try fm.removeItem(atPath: "/Library/Application Support/Clover/CloverDaemonNew")
+    if fm.fileExists(atPath: cloverDaemonNewPath) {
+      try fm.removeItem(atPath: cloverDaemonNewPath)
+    }
+    
+    if fm.fileExists(atPath: cloverLogOut) {
+      try fm.removeItem(atPath: cloverLogOut)
+    }
+    
+    if fm.fileExists(atPath: wrapperPath) {
+      try fm.removeItem(atPath: wrapperPath)
+    }
+    
+    if fm.fileExists(atPath: frameworksPath) {
+      try fm.removeItem(atPath: frameworksPath)
     }
     exit(EXIT_SUCCESS)
   } catch {
@@ -383,7 +517,6 @@ if CommandLine.arguments.contains("--install") {
   }
 } else {
   main()
-  CFRunLoopRun()
 }
 
 exit(EXIT_FAILURE)
