@@ -1,298 +1,13 @@
 /** @file
-  Defines TLS Library APIs.
+  SSL/TLS Configuration Null Library Wrapper Implementation.
 
 Copyright (c) 2016 - 2017, Intel Corporation. All rights reserved.<BR>
+(C) Copyright 2016 Hewlett Packard Enterprise Development LP<BR>
 SPDX-License-Identifier: BSD-2-Clause-Patent
 
 **/
 
-#ifndef __TLS_LIB_H__
-#define __TLS_LIB_H__
-
-/**
-  Initializes the OpenSSL library.
-
-  This function registers ciphers and digests used directly and indirectly
-  by SSL/TLS, and initializes the readable error messages.
-  This function must be called before any other action takes places.
-
-  @retval TRUE   The OpenSSL library has been initialized.
-  @retval FALSE  Failed to initialize the OpenSSL library.
-
-**/
-BOOLEAN
-EFIAPI
-TlsInitialize (
-  VOID
-  );
-
-/**
-  Free an allocated SSL_CTX object.
-
-  @param[in]  TlsCtx    Pointer to the SSL_CTX object to be released.
-
-**/
-VOID
-EFIAPI
-TlsCtxFree (
-  IN   VOID                  *TlsCtx
-  );
-
-/**
-  Creates a new SSL_CTX object as framework to establish TLS/SSL enabled
-  connections.
-
-  @param[in]  MajorVer    Major Version of TLS/SSL Protocol.
-  @param[in]  MinorVer    Minor Version of TLS/SSL Protocol.
-
-  @return  Pointer to an allocated SSL_CTX object.
-           If the creation failed, TlsCtxNew() returns NULL.
-
-**/
-VOID *
-EFIAPI
-TlsCtxNew (
-  IN     UINT8                    MajorVer,
-  IN     UINT8                    MinorVer
-  );
-
-/**
-  Free an allocated TLS object.
-
-  This function removes the TLS object pointed to by Tls and frees up the
-  allocated memory. If Tls is NULL, nothing is done.
-
-  @param[in]  Tls    Pointer to the TLS object to be freed.
-
-**/
-VOID
-EFIAPI
-TlsFree (
-  IN     VOID                     *Tls
-  );
-
-/**
-  Create a new TLS object for a connection.
-
-  This function creates a new TLS object for a connection. The new object
-  inherits the setting of the underlying context TlsCtx: connection method,
-  options, verification setting.
-
-  @param[in]  TlsCtx    Pointer to the SSL_CTX object.
-
-  @return  Pointer to an allocated SSL object.
-           If the creation failed, TlsNew() returns NULL.
-
-**/
-VOID *
-EFIAPI
-TlsNew (
-  IN     VOID                     *TlsCtx
-  );
-
-/**
-  Checks if the TLS handshake was done.
-
-  This function will check if the specified TLS handshake was done.
-
-  @param[in]  Tls    Pointer to the TLS object for handshake state checking.
-
-  @retval  TRUE     The TLS handshake was done.
-  @retval  FALSE    The TLS handshake was not done.
-
-**/
-BOOLEAN
-EFIAPI
-TlsInHandshake (
-  IN     VOID                     *Tls
-  );
-
-/**
-  Perform a TLS/SSL handshake.
-
-  This function will perform a TLS/SSL handshake.
-
-  @param[in]       Tls            Pointer to the TLS object for handshake operation.
-  @param[in]       BufferIn       Pointer to the most recently received TLS Handshake packet.
-  @param[in]       BufferInSize   Packet size in bytes for the most recently received TLS
-                                  Handshake packet.
-  @param[out]      BufferOut      Pointer to the buffer to hold the built packet.
-  @param[in, out]  BufferOutSize  Pointer to the buffer size in bytes. On input, it is
-                                  the buffer size provided by the caller. On output, it
-                                  is the buffer size in fact needed to contain the
-                                  packet.
-
-  @retval EFI_SUCCESS             The required TLS packet is built successfully.
-  @retval EFI_INVALID_PARAMETER   One or more of the following conditions is TRUE:
-                                  Tls is NULL.
-                                  BufferIn is NULL but BufferInSize is NOT 0.
-                                  BufferInSize is 0 but BufferIn is NOT NULL.
-                                  BufferOutSize is NULL.
-                                  BufferOut is NULL if *BufferOutSize is not zero.
-  @retval EFI_BUFFER_TOO_SMALL    BufferOutSize is too small to hold the response packet.
-  @retval EFI_ABORTED             Something wrong during handshake.
-
-**/
-EFI_STATUS
-EFIAPI
-TlsDoHandshake (
-  IN     VOID                     *Tls,
-  IN     UINT8                    *BufferIn, OPTIONAL
-  IN     UINTN                    BufferInSize, OPTIONAL
-     OUT UINT8                    *BufferOut, OPTIONAL
-  IN OUT UINTN                    *BufferOutSize
-  );
-
-/**
-  Handle Alert message recorded in BufferIn. If BufferIn is NULL and BufferInSize is zero,
-  TLS session has errors and the response packet needs to be Alert message based on error type.
-
-  @param[in]       Tls            Pointer to the TLS object for state checking.
-  @param[in]       BufferIn       Pointer to the most recently received TLS Alert packet.
-  @param[in]       BufferInSize   Packet size in bytes for the most recently received TLS
-                                  Alert packet.
-  @param[out]      BufferOut      Pointer to the buffer to hold the built packet.
-  @param[in, out]  BufferOutSize  Pointer to the buffer size in bytes. On input, it is
-                                  the buffer size provided by the caller. On output, it
-                                  is the buffer size in fact needed to contain the
-                                  packet.
-
-  @retval EFI_SUCCESS             The required TLS packet is built successfully.
-  @retval EFI_INVALID_PARAMETER   One or more of the following conditions is TRUE:
-                                  Tls is NULL.
-                                  BufferIn is NULL but BufferInSize is NOT 0.
-                                  BufferInSize is 0 but BufferIn is NOT NULL.
-                                  BufferOutSize is NULL.
-                                  BufferOut is NULL if *BufferOutSize is not zero.
-  @retval EFI_ABORTED             An error occurred.
-  @retval EFI_BUFFER_TOO_SMALL    BufferOutSize is too small to hold the response packet.
-
-**/
-EFI_STATUS
-EFIAPI
-TlsHandleAlert (
-  IN     VOID                     *Tls,
-  IN     UINT8                    *BufferIn, OPTIONAL
-  IN     UINTN                    BufferInSize, OPTIONAL
-     OUT UINT8                    *BufferOut, OPTIONAL
-  IN OUT UINTN                    *BufferOutSize
-  );
-
-/**
-  Build the CloseNotify packet.
-
-  @param[in]       Tls            Pointer to the TLS object for state checking.
-  @param[in, out]  Buffer         Pointer to the buffer to hold the built packet.
-  @param[in, out]  BufferSize     Pointer to the buffer size in bytes. On input, it is
-                                  the buffer size provided by the caller. On output, it
-                                  is the buffer size in fact needed to contain the
-                                  packet.
-
-  @retval EFI_SUCCESS             The required TLS packet is built successfully.
-  @retval EFI_INVALID_PARAMETER   One or more of the following conditions is TRUE:
-                                  Tls is NULL.
-                                  BufferSize is NULL.
-                                  Buffer is NULL if *BufferSize is not zero.
-  @retval EFI_BUFFER_TOO_SMALL    BufferSize is too small to hold the response packet.
-
-**/
-EFI_STATUS
-EFIAPI
-TlsCloseNotify (
-  IN     VOID                     *Tls,
-  IN OUT UINT8                    *Buffer,
-  IN OUT UINTN                    *BufferSize
-  );
-
-/**
-  Attempts to read bytes from one TLS object and places the data in Buffer.
-
-  This function will attempt to read BufferSize bytes from the TLS object
-  and places the data in Buffer.
-
-  @param[in]      Tls           Pointer to the TLS object.
-  @param[in,out]  Buffer        Pointer to the buffer to store the data.
-  @param[in]      BufferSize    The size of Buffer in bytes.
-
-  @retval  >0    The amount of data successfully read from the TLS object.
-  @retval  <=0   No data was successfully read.
-
-**/
-INTN
-EFIAPI
-TlsCtrlTrafficOut (
-  IN     VOID                     *Tls,
-  IN OUT VOID                     *Buffer,
-  IN     UINTN                    BufferSize
-  );
-
-/**
-  Attempts to write data from the buffer to TLS object.
-
-  This function will attempt to write BufferSize bytes data from the Buffer
-  to the TLS object.
-
-  @param[in]  Tls           Pointer to the TLS object.
-  @param[in]  Buffer        Pointer to the data buffer.
-  @param[in]  BufferSize    The size of Buffer in bytes.
-
-  @retval  >0    The amount of data successfully written to the TLS object.
-  @retval <=0    No data was successfully written.
-
-**/
-INTN
-EFIAPI
-TlsCtrlTrafficIn (
-  IN     VOID                     *Tls,
-  IN     VOID                     *Buffer,
-  IN     UINTN                    BufferSize
-  );
-
-/**
-  Attempts to read bytes from the specified TLS connection into the buffer.
-
-  This function tries to read BufferSize bytes data from the specified TLS
-  connection into the Buffer.
-
-  @param[in]      Tls           Pointer to the TLS connection for data reading.
-  @param[in,out]  Buffer        Pointer to the data buffer.
-  @param[in]      BufferSize    The size of Buffer in bytes.
-
-  @retval  >0    The read operation was successful, and return value is the
-                 number of bytes actually read from the TLS connection.
-  @retval  <=0   The read operation was not successful.
-
-**/
-INTN
-EFIAPI
-TlsRead (
-  IN     VOID                     *Tls,
-  IN OUT VOID                     *Buffer,
-  IN     UINTN                    BufferSize
-  );
-
-/**
-  Attempts to write data to a TLS connection.
-
-  This function tries to write BufferSize bytes data from the Buffer into the
-  specified TLS connection.
-
-  @param[in]  Tls           Pointer to the TLS connection for data writing.
-  @param[in]  Buffer        Pointer to the data buffer.
-  @param[in]  BufferSize    The size of Buffer in bytes.
-
-  @retval  >0    The write operation was successful, and return value is the
-                 number of bytes actually written to the TLS connection.
-  @retval <=0    The write operation was not successful.
-
-**/
-INTN
-EFIAPI
-TlsWrite (
-  IN     VOID                     *Tls,
-  IN     VOID                     *Buffer,
-  IN     UINTN                    BufferSize
-  );
+#include "InternalTlsLib.h"
 
 /**
   Set a new TLS/SSL method for a particular TLS object.
@@ -314,7 +29,11 @@ TlsSetVersion (
   IN     VOID                     *Tls,
   IN     UINT8                    MajorVer,
   IN     UINT8                    MinorVer
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Set TLS object to work in client or server mode.
@@ -334,7 +53,11 @@ EFIAPI
 TlsSetConnectionEnd (
   IN     VOID                     *Tls,
   IN     BOOLEAN                  IsServer
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Set the ciphers list to be used by the TLS object.
@@ -360,7 +83,11 @@ TlsSetCipherList (
   IN     VOID                     *Tls,
   IN     UINT16                   *CipherId,
   IN     UINTN                    CipherNum
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Set the compression method for TLS/SSL operations.
@@ -378,7 +105,11 @@ EFI_STATUS
 EFIAPI
 TlsSetCompressionMethod (
   IN     UINT8                    CompMethod
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Set peer certificate verification mode for the TLS connection.
@@ -394,8 +125,12 @@ EFIAPI
 TlsSetVerify (
   IN     VOID                     *Tls,
   IN     UINT32                   VerifyMode
-  );
+  )
+{
+  ASSERT(FALSE);
+}
 
+// MU_CHANGE - Proposed fixes for TCBZ960, invalid domain name (CN) accepted. [BEGIN]
 /**
   Set the specified host name to be verified.
 
@@ -414,7 +149,13 @@ TlsSetVerifyHost (
   IN     VOID                     *Tls,
   IN     UINT32                   Flags,
   IN     CHAR8                    *HostName
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
+
+// MU_CHANGE - Proposed fixes for TCBZ960, invalid domain name (CN) accepted. [END]
 
 /**
   Sets a TLS/SSL session ID to be used during TLS/SSL connect.
@@ -437,7 +178,11 @@ TlsSetSessionId (
   IN     VOID                     *Tls,
   IN     UINT8                    *SessionId,
   IN     UINT16                   SessionIdLen
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Adds the CA to the cert store when requesting Server or Client authentication.
@@ -462,7 +207,11 @@ TlsSetCaCertificate (
   IN     VOID                     *Tls,
   IN     VOID                     *Data,
   IN     UINTN                    DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Loads the local public certificate into the specified TLS object.
@@ -487,7 +236,11 @@ TlsSetHostPublicCert (
   IN     VOID                     *Tls,
   IN     VOID                     *Data,
   IN     UINTN                    DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Adds the local private key to the specified TLS object.
@@ -511,7 +264,11 @@ TlsSetHostPrivateKey (
   IN     VOID                     *Tls,
   IN     VOID                     *Data,
   IN     UINTN                    DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Adds the CA-supplied certificate revocation list for certificate validation.
@@ -532,7 +289,11 @@ EFIAPI
 TlsSetCertRevocationList (
   IN     VOID                     *Data,
   IN     UINTN                    DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the protocol version used by the specified TLS connection.
@@ -551,7 +312,11 @@ UINT16
 EFIAPI
 TlsGetVersion (
   IN     VOID                     *Tls
-  );
+  )
+{
+  ASSERT(FALSE);
+  return 0;
+}
 
 /**
   Gets the connection end of the specified TLS connection.
@@ -570,7 +335,11 @@ UINT8
 EFIAPI
 TlsGetConnectionEnd (
   IN     VOID                     *Tls
-  );
+  )
+{
+  ASSERT(FALSE);
+  return 0;
+}
 
 /**
   Gets the cipher suite used by the specified TLS connection.
@@ -591,7 +360,11 @@ EFIAPI
 TlsGetCurrentCipher (
   IN     VOID                     *Tls,
   IN OUT UINT16                   *CipherId
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the compression methods used by the specified TLS connection.
@@ -614,7 +387,11 @@ EFIAPI
 TlsGetCurrentCompressionId (
   IN     VOID                     *Tls,
   IN OUT UINT8                    *CompressionId
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the verification mode currently set in the TLS connection.
@@ -633,7 +410,11 @@ UINT32
 EFIAPI
 TlsGetVerify (
   IN     VOID                     *Tls
-  );
+  )
+{
+  ASSERT(FALSE);
+  return 0;
+}
 
 /**
   Gets the session ID used by the specified TLS connection.
@@ -656,7 +437,11 @@ TlsGetSessionId (
   IN     VOID                     *Tls,
   IN OUT UINT8                    *SessionId,
   IN OUT UINT16                   *SessionIdLen
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the client random data used in the specified TLS connection.
@@ -674,7 +459,10 @@ EFIAPI
 TlsGetClientRandom (
   IN     VOID                     *Tls,
   IN OUT UINT8                    *ClientRandom
-  );
+  )
+{
+  ASSERT(FALSE);
+}
 
 /**
   Gets the server random data used in the specified TLS connection.
@@ -692,7 +480,10 @@ EFIAPI
 TlsGetServerRandom (
   IN     VOID                     *Tls,
   IN OUT UINT8                    *ServerRandom
-  );
+  )
+{
+  ASSERT(FALSE);
+}
 
 /**
   Gets the master key data used in the specified TLS connection.
@@ -713,7 +504,11 @@ EFIAPI
 TlsGetKeyMaterial (
   IN     VOID                     *Tls,
   IN OUT UINT8                    *KeyMaterial
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the CA Certificate from the cert store.
@@ -737,7 +532,11 @@ TlsGetCaCertificate (
   IN     VOID                     *Tls,
   OUT    VOID                     *Data,
   IN OUT UINTN                    *DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the local public Certificate set in the specified TLS object.
@@ -762,7 +561,11 @@ TlsGetHostPublicCert (
   IN     VOID                     *Tls,
   OUT    VOID                     *Data,
   IN OUT UINTN                    *DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the local private key set in the specified TLS object.
@@ -786,7 +589,11 @@ TlsGetHostPrivateKey (
   IN     VOID                     *Tls,
   OUT    VOID                     *Data,
   IN OUT UINTN                    *DataSize
-  );
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
 
 /**
   Gets the CA-supplied certificate revocation list data set in the specified
@@ -808,7 +615,8 @@ EFIAPI
 TlsGetCertRevocationList (
   OUT    VOID                     *Data,
   IN OUT UINTN                    *DataSize
-  );
-
-#endif // __TLS_LIB_H__
-
+  )
+{
+  ASSERT(FALSE);
+  return EFI_UNSUPPORTED;
+}
